@@ -1,0 +1,14 @@
+#!/usr/bin/python
+#  Print sun's celestial coordinates for a given date: YYYY MM DD
+from asphalt import date_to_sun_earth_ecliptic
+from asphalt import sun_earth_ecliptic_to_celestial
+from sys import argv
+print "Sun dist: {:f}, right ascension: {:f}, declination: {:f}".format(
+	*(lambda d, l, borsht, o: sun_earth_ecliptic_to_celestial(
+			d,
+			l,
+			o,
+	)) (*date_to_sun_earth_ecliptic(*map(int, argv[1:4])))
+)
+# ./cel 1990 4 19
+# Sun dist: 1.004323, right ascension: 11.008375, declination: 26.658078
