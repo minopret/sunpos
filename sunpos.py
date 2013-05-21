@@ -1,6 +1,6 @@
 #  coding=utf8
 
-# sunpos - Computation the position of the sun relative to
+# sunpos - Compute the position of the sun relative to
 # Earth's orbit, according to the current date and time and
 # the observer's position on Earth.
 #
@@ -550,4 +550,4 @@ def ecliptic_to_celestial(distance, latitude, longitude, oblecl):
         )
     )
     return (distance1, Decl, RA)
-x
+
