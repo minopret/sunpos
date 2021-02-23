@@ -1,13 +1,14 @@
-#!/usr/bin/python
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
 
 # Aaron Mansheim 2011-06-22
 # Based on: http://stjarnhimlen.se/comp/tutorial.html 2009-07-02
 # Note that sunriset.c by the same author is in the public domain.
 
-from sunpos import *
 import unittest
-from math import fabs, floor, fsum
-
+from math import fsum
+from degrees import rev
+from sunpos import *
 
 class TestSunPos(unittest.TestCase):
 
@@ -51,27 +52,23 @@ class TestSunPos(unittest.TestCase):
     def test_spherical_to_cylindrical(self):
         # Change the ecliptic spherical coordinates
         # to ecliptic cylindrical coordinates.
-        (
-            summer_solstice_cylinder_radius,
-            summer_solstice_cylinder_height,
-            summer_solstice_cylinder_longitude,
-        ) = spherical_to_cylindrical(
-            self.summer_solstice_r,
-            self.summer_solstice_lat,
-            self.summer_solstice_long,
-        )
+        summer_solstice = Spherical(
+                self.summer_solstice_r,
+                self.summer_solstice_lat,
+                self.summer_solstice_long
+            ).to_cylindrical()
         self.assertAlmostEqual(
-            summer_solstice_cylinder_radius,
+            summer_solstice.cylindrical_radius,
             1.000000,
             places = 6,
         )
         self.assertAlmostEqual(
-            summer_solstice_cylinder_height,
+            summer_solstice.height,
             0.000000,
             places = 6,
         )
         self.assertAlmostEqual(
-            summer_solstice_cylinder_longitude,
+            summer_solstice.longitude,
             90.000000,
             places = 6,
         )
@@ -83,27 +80,23 @@ class TestSunPos(unittest.TestCase):
     def test_cylindrical_to_cartesian3d(self):
         # Change the ecliptic cylindrical coordinates
         # to ecliptic cartesian (x-y-z) coordinates.
-        (
-            summer_solstice_x,
-            summer_solstice_y,
-            summer_solstice_z,
-        ) = cylindrical_to_cartesian3d(
+        summer_solstice = Cylindrical(
             self.summer_solstice_cylinder_radius,
             self.summer_solstice_cylinder_height,
             self.summer_solstice_cylinder_longitude,
-        )
+        ).to_cartesian3d()
         self.assertAlmostEqual(
-            summer_solstice_x,
+            summer_solstice.x,
             self.summer_solstice_x,
             places = 6,
         )
         self.assertAlmostEqual(
-            summer_solstice_y,
+            summer_solstice.y,
             self.summer_solstice_y,
             places = 6,
         )
         self.assertAlmostEqual(
-            summer_solstice_z,
+            summer_solstice.z,
             self.summer_solstice_z,
             places = 6,
         )
@@ -111,27 +104,23 @@ class TestSunPos(unittest.TestCase):
     def test_spherical_to_cartesian3d(self):
         # The two previous steps can be combined in
         # one operation.
-        (
-            summer_solstice_x,
-            summer_solstice_y,
-            summer_solstice_z,
-        ) = spherical_to_cartesian3d(
+        summer_solstice = Spherical(
             self.summer_solstice_r,
             self.summer_solstice_lat,
             self.summer_solstice_long,
-        )
+        ).to_cartesian3d()
         self.assertAlmostEqual(
-            summer_solstice_x,
+            summer_solstice.x,
             self.summer_solstice_x,
             places = 6,
         )
         self.assertAlmostEqual(
-            summer_solstice_y,
+            summer_solstice.y,
             self.summer_solstice_y,
             places = 6,
         )
         self.assertAlmostEqual(
-            summer_solstice_z,
+            summer_solstice.z,
             self.summer_solstice_z,
             places = 6,
         )
@@ -154,28 +143,23 @@ class TestSunPos(unittest.TestCase):
         # called "the obliquity of the ecliptic".
         # The rotated coordinates are equatorial
         # cartesian coordinates.
-        (
-            summer_solstice_celestial_x,
-            summer_solstice_celestial_y,
-            summer_solstice_celestial_z,
-        ) = rotate_cartesian3d_about_x(
+        summer_solstice_celestial = Cartesian3d(
             self.summer_solstice_x,
             self.summer_solstice_y,
             self.summer_solstice_z,
-            self.oblecl,
-        )
+        ).rotate_about_x(self.oblecl)
         self.assertAlmostEqual(
-            summer_solstice_celestial_x,
+            summer_solstice_celestial.x,
             self.summer_solstice_celestial_x,
             places = 6,
         )
         self.assertAlmostEqual(
-            summer_solstice_celestial_y,
+            summer_solstice_celestial.y,
             self.summer_solstice_celestial_y,
             places = 6,
         )
         self.assertAlmostEqual(
-            summer_solstice_celestial_z,
+            summer_solstice_celestial.z,
             self.summer_solstice_celestial_z,
             places = 6,
         )
@@ -186,27 +170,23 @@ class TestSunPos(unittest.TestCase):
         # By looking up those coordinates in a star atlas,
         # we would see which stars are blotted out by the Sun
         # on the particular day that we used in our calculations.
-        (
-            summer_solstice_celestial_r,
-            summer_solstice_Decl,
-            summer_solstice_RA,
-        ) = cartesian3d_to_spherical(
+        summer_solstice_celestial = Cartesian3d(
             self.summer_solstice_celestial_x,
             self.summer_solstice_celestial_y,
             self.summer_solstice_celestial_z,
-        )
+        ).to_spherical()
         self.assertAlmostEqual(
-            summer_solstice_celestial_r,
+            summer_solstice_celestial.radius,
             1.000000,
             places = 6,
         )
         self.assertAlmostEqual(
-            summer_solstice_Decl,
+            summer_solstice_celestial.latitude,
             23.400000,
             places = 5,
         )
         self.assertAlmostEqual(
-            summer_solstice_RA,
+            summer_solstice_celestial.longitude,
             90.000000,
             places = 6,
         )
@@ -303,20 +283,19 @@ class TestSunPos(unittest.TestCase):
     y = +0.965834
 
     def test_eccentric_to_cartesian2d(self):
-        (x, y) = eccentric_to_cartesian2d(
-            self.eccentric_anomaly,
-            self.eccentricity,
-        )
-        self.assertAlmostEqual(x, self.x, places = 6)
-        self.assertAlmostEqual(y, self.y, places = 6)
+        p = Cartesian2d.from_eccentric(
+                self.eccentric_anomaly,
+                self.eccentricity)
+        self.assertAlmostEqual(p.x, self.x, places = 6)
+        self.assertAlmostEqual(p.y, self.y, places = 6)
 
     distance = 1.004323
     true_anomaly = 105.9134
 
     def test_cartesian2d_to_polar(self):
-        (distance, true_anomaly) = cartesian2d_to_polar(self.x, self.y)
-        self.assertAlmostEqual(distance, self.distance, places = 6)
-        self.assertAlmostEqual(true_anomaly, self.true_anomaly, places = 4)
+        p = Cartesian2d(self.x, self.y).to_polar()
+        self.assertAlmostEqual(p.r, self.distance, places = 6)
+        self.assertAlmostEqual(p.θ, self.true_anomaly, places = 4)
 
     true_longitude = 28.6869
 
@@ -373,12 +352,9 @@ class TestSunPos(unittest.TestCase):
     ecliptic_y = 0.482099
 
     def test_polar_to_cartesian2d(self):
-        (
-            ecliptic_x,
-            ecliptic_y,
-        ) = polar_to_cartesian2d(self.distance, self.true_longitude)
-        self.assertAlmostEqual(ecliptic_x, self.ecliptic_x, places = 6)
-        self.assertAlmostEqual(ecliptic_y, self.ecliptic_y, places = 5)
+        ecliptic = Polar(self.distance, self.true_longitude).to_cartesian2d()
+        self.assertAlmostEqual(ecliptic.x, self.ecliptic_x, places = 6)
+        self.assertAlmostEqual(ecliptic.y, self.ecliptic_y, places = 5)
 
     ecliptic_z = 0.0  # the Sun and Earth stay in plane, close enough
 
@@ -387,36 +363,27 @@ class TestSunPos(unittest.TestCase):
     equatorial_z = 0.191778
 
     def test_rotate_cartesian3d_about_x_2(self):
-        (
-            equatorial_x,
-            equatorial_y,
-            equatorial_z,
-        ) = rotate_cartesian3d_about_x(
+        equatorial = Cartesian3d(
             self.ecliptic_x,
             self.ecliptic_y,
             self.ecliptic_z,
-            self.obliquity_of_the_ecliptic,
-        )
-        self.assertAlmostEqual(equatorial_x, self.equatorial_x, places = 6)
-        self.assertAlmostEqual(equatorial_y, self.equatorial_y, places = 5)
-        self.assertAlmostEqual(equatorial_z, self.equatorial_z, places = 6)
+        ).rotate_about_x(self.obliquity_of_the_ecliptic)
+        self.assertAlmostEqual(equatorial.x, self.equatorial_x, places = 6)
+        self.assertAlmostEqual(equatorial.y, self.equatorial_y, places = 5)
+        self.assertAlmostEqual(equatorial.z, self.equatorial_z, places = 6)
 
     Decl = 11.008375
     RA = 26.658078
 
     def test_cartesian3d_to_spherical_2(self):
-        (
-            distance,
-            Decl,
-            RA,
-        ) = cartesian3d_to_spherical(
+        p = Cartesian3d(
             self.equatorial_x,
             self.equatorial_y,
             self.equatorial_z,
-        )
-        self.assertAlmostEqual(distance, self.distance, places = 6)
-        self.assertAlmostEqual(Decl, self.Decl, places = 5)
-        self.assertAlmostEqual(RA, self.RA, places = 3)
+        ).to_spherical()
+        self.assertAlmostEqual(p.radius, self.distance, places = 6)
+        self.assertAlmostEqual(p.latitude, self.Decl, places = 5)
+        self.assertAlmostEqual(p.longitude, self.RA, places = 3)
 
     def test_arcdegrees_to_arcminutes(self):
         m = arcdegrees_to_arcminutes(self.Decl)
@@ -484,18 +451,14 @@ class TestSunPos(unittest.TestCase):
         # zodaic meridian with the southern half of the
         # north-zenith-south meridian, and +y toward the western
         # point of the horizon on the west-zenith-east meridian.
-        (
-            x,
-            y,
-            z,
-        ) = spherical_to_cartesian3d(
+        p = Spherical(
             1.0,
             self.Decl,
             self.hour_angle_degrees,
-        )
-        self.assertAlmostEqual(x, self.celestial_horizontal_x, places = 6)
-        self.assertAlmostEqual(y, self.celestial_horizontal_y, places = 6)
-        self.assertAlmostEqual(z, self.celestial_horizontal_z, places = 6)
+        ).to_cartesian3d()
+        self.assertAlmostEqual(p.x, self.celestial_horizontal_x, places = 6)
+        self.assertAlmostEqual(p.y, self.celestial_horizontal_y, places = 6)
+        self.assertAlmostEqual(p.z, self.celestial_horizontal_z, places = 6)
 
     terrestrial_latitude = +60
     sun_alt_az_x = -0.915902
@@ -503,36 +466,27 @@ class TestSunPos(unittest.TestCase):
     sun_alt_az_z = -0.308303
 
     def test_decline_cartesian3d_about_y(self):
-        (
-            x,
-            y,
-            z,
-        ) = decline_cartesian3d_about_y(
+        p = Cartesian3d(
             self.celestial_horizontal_x,
             self.celestial_horizontal_y,
             self.celestial_horizontal_z,
-            self.terrestrial_latitude,
-        )
-        self.assertAlmostEqual(x, self.sun_alt_az_x, places = 6)
-        self.assertAlmostEqual(y, self.sun_alt_az_y, places = 6)
-        self.assertAlmostEqual(z, self.sun_alt_az_z, places = 5)
+        ).decline_about_y(self.terrestrial_latitude)
+        self.assertAlmostEqual(p.x, self.sun_alt_az_x, places = 6)
+        self.assertAlmostEqual(p.y, self.sun_alt_az_y, places = 6)
+        self.assertAlmostEqual(p.z, self.sun_alt_az_z, places = 5)
 
     azimuth = 15.676697
     altitude = 342.042994
 
     def test_cartesian3d_to_spherical_3(self):
-        (
-            distance,
-            altitude,
-            azimuth,
-        ) = cartesian3d_to_spherical(
+        p = Cartesian3d(
             self.sun_alt_az_x,
             self.sun_alt_az_y,
             self.sun_alt_az_z,
-        )
-        azimuth = rev(azimuth + 180)
+        ).to_spherical()
+        azimuth = rev(p.longitude + 180)
         self.assertAlmostEqual(azimuth, self.azimuth, places = 4)
-        self.assertAlmostEqual(altitude, self.altitude, places = 4)
+        self.assertAlmostEqual(p.latitude, self.altitude, places = 4)
 
     def test_sun_earth_celestial_to_alt_azimuth(self):
         (altitude, azimuth) = sun_earth_celestial_to_alt_azimuth(
@@ -565,13 +519,13 @@ class TestSunPos(unittest.TestCase):
     moon_M = 266.0954
 
     def test_moon_elements(self):
-        (N, i, w, a, e, M) = moon_elements(self.d_1990_04_19)
-        self.assertAlmostEqual(N, self.moon_N, places = 4)
-        self.assertAlmostEqual(i, self.moon_i, places = 4)
-        self.assertAlmostEqual(w, self.moon_w, places = 4)
-        self.assertAlmostEqual(a, self.moon_a, places = 4)
-        self.assertAlmostEqual(e, self.moon_e, places = 6)
-        self.assertAlmostEqual(M, self.moon_M, places = 4)
+        elems = moon_elements(self.d_1990_04_19)
+        self.assertAlmostEqual(elems.Ω, self.moon_N, places = 4)
+        self.assertAlmostEqual(elems.i, self.moon_i, places = 4)
+        self.assertAlmostEqual(elems.ω, self.moon_w, places = 4)
+        self.assertAlmostEqual(elems.a, self.moon_a, places = 4)
+        self.assertAlmostEqual(elems.e, self.moon_e, places = 6)
+        self.assertAlmostEqual(elems.M, self.moon_M, places = 4)
 
     moon_E0 = 262.9689
 
@@ -605,9 +559,9 @@ class TestSunPos(unittest.TestCase):
     moon_theta = 259.8605
 
     def test_cartesian2d_to_polar_2(self):
-        (r, theta) = cartesian2d_to_polar(self.moon_x, self.moon_y)
-        self.assertAlmostEqual(r, self.moon_r, places = 5)
-        self.assertAlmostEqual(theta, self.moon_theta, places = 4)
+        p = Cartesian2d(self.moon_x, self.moon_y).to_polar()
+        self.assertAlmostEqual(p.r, self.moon_r, places = 5)
+        self.assertAlmostEqual(p.θ, self.moon_theta, places = 4)
 
     moon_xeclip = +37.65311
     moon_yeclip = -47.57180
@@ -630,18 +584,14 @@ class TestSunPos(unittest.TestCase):
     moon_lon_eclip = 308.3616
 
     def test_cartesian3d_to_spherical_4(self):
-        (
-            r,
-            latitude,
-            longitude,
-        ) = cartesian3d_to_spherical(
+        p = Cartesian3d(
             self.moon_xeclip,
             self.moon_yeclip,
             self.moon_zeclip,
-        )
-        self.assertAlmostEqual(r, self.moon_r_eclip, places = 4)
-        self.assertAlmostEqual(latitude, self.moon_lat_eclip, places = 4)
-        self.assertAlmostEqual(longitude, self.moon_lon_eclip, places = 4)
+        ).to_spherical()
+        self.assertAlmostEqual(p.radius, self.moon_r_eclip, places = 4)
+        self.assertAlmostEqual(p.latitude, self.moon_lat_eclip, places = 4)
+        self.assertAlmostEqual(p.longitude, self.moon_lon_eclip, places = 4)
 
     # mean_longitude = 26.8388
     moon_mean_longitude = 314.5789
@@ -674,7 +624,7 @@ class TestSunPos(unittest.TestCase):
         +0.0452,
         +0.0428,
         +0.0126,
-        -(-0.0333),
+        -1 * (-0.0333),
         -0.0055,
         -0.0079,
         -0.0029,
@@ -796,7 +746,7 @@ class TestSunPos(unittest.TestCase):
 
     moon_hour_angle_degrees = 272.3377
 
-    def test_hour_angle(self):
+    def test_moon_hour_angle(self):
         h = arcdegrees_to_hours(self.moon_RA)
         ha = hour_angle(self.sidtime0, h)
         d = hours_to_arcdegrees(ha)
