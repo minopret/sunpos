@@ -1,14 +1,11 @@
-#!/usr/bin/python
+#!python
 #  Print sun's celestial coordinates for a given date: YYYY MM DD
-from sunpos import date_to_sun_earth_ecliptic
-from sunpos import sun_earth_ecliptic_to_celestial
 from sys import argv
-print "Sun dist: {:f}, right ascension: {:f}, declination: {:f}".format(
-	*(lambda d, l, _, o: sun_earth_ecliptic_to_celestial(
-			d,
-			l,
-			o,
-	)) (*date_to_sun_earth_ecliptic(*map(int, argv[1:4])))
-)
+from sunpos import date_to_sun_earth_ecliptic, Date
+from sunpos import sun_earth_ecliptic_to_celestial
+date = Date(int(argv[1]), int(argv[2]), int(argv[3]))
+d, l, _, o = date_to_sun_earth_ecliptic(date)
+celestial = sun_earth_ecliptic_to_celestial(d, l, o)
+print(f"Sun dist: {d:f}, right ascension: {celestial.RA:f}, declination: {celestial.Decl:f}")
 # ./celest 1990 4 19
-# Sun dist: 1.004323, right ascension: 11.008375, declination: 26.658078
+# Sun dist: 1.004323, right ascension: 26.658078, declination: 11.008375

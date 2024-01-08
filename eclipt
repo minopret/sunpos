@@ -1,11 +1,9 @@
-#!/usr/bin/python
+#!python
 #  Print sun's ecliptic coordinates for a given date: YYYY MM DD
-from sunpos import date_to_sun_earth_ecliptic
 from sys import argv
-print "Sun dist: {:f}, long: {:f}, mean long: {:f}, obl ecl: {:f}".format(
-	*date_to_sun_earth_ecliptic(
-		*map(int, argv[1:4])
-	)
-)
+from sunpos import date_to_sun_earth_ecliptic, Date
+date = Date(int(argv[1]), int(argv[2]), int(argv[3]))
+dist, long, mlong, oblecl = date_to_sun_earth_ecliptic(date)
+print(f"Sun dist: {dist:f}, long: {long:f}, mean long: {mlong:f}, obl ecl: {oblecl:f}")
 # ./eclipt 2011 6 26
 # Sun dist: 1.016489, long: 94.083021, mean long: 93.778042, obl ecl: 23.437805

@@ -1,13 +1,13 @@
-#!/usr/bin/python
+#!python
 #  Print sun's altitude and azimuth coordinates
 #  for a given date, time (hours UT), latitude, and longitude:
 #     YYYY MM DD HH LAT LON
-from sunpos import time_and_location_to_sun_alt_azimuth
 from sys import argv
-print "Sun altitude angle: {:f}, azimuth angle: {:f}".format(
-	*time_and_location_to_sun_alt_azimuth(
-		*map(int, argv[1:7])
-	)
+from sunpos import Date, Degrees, Geographic, time_and_location_to_sun_horizontal
+date = Date(int(argv[1]), int(argv[2]), int(argv[3]))
+altitude, azimuth = time_and_location_to_sun_horizontal(
+    date, int(argv[4]), Geographic(Degrees(int(argv[5])), Degrees(int(argv[6])))
 )
+print(f"Sun altitude angle: {altitude:f}, azimuth angle: {azimuth:f}")
 # ./altazi 1990 4 19 0 60 15
 # Sun altitude angle: 342.042994, azimuth angle: 15.676697
