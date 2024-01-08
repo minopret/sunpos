@@ -1,0 +1,21 @@
+[FORMAT]
+good-names=a,d,D,e,E,E0,E1,h,i,k,M,p,q,r,x,y,z,Δθ,θ,ν,ω,Ω,_F,_Lm,_Ls,_Ms,Decl,F,GMST0,hours_UT,Lm,Ls,Mm,Ms,moon_N,moon_ω,RA,toGMST0,UT
+
+# Ω: longitude of the ascending node
+# i: inclination
+# ω: argument of periapsis
+# a: length of semimajor axis; mean distance
+# e: eccentricity
+# M: mean anomaly
+
+# D: mean elongation
+# Decl: declination
+# E: eccentric anomaly
+# F: argument of latitude
+# k: iteration count
+# Lm: moon mean longitude
+# Ls: sun mean longitude
+# Mm: moon mean anomaly
+# Ms: sun mean anomaly
+# RA: right ascension
+# ν: true anomaly
