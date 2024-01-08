@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-# pylint: disable=invalid-name, non-ascii-name
+# pylint: disable=missing-module-docstring, missing-class-docstring, missing-function-docstring
+# pylint: disable=non-ascii-name
 
 # sunpos - Compute the position of the sun relative to
 # Earth's orbit, according to the current date and time and
@@ -16,294 +17,264 @@
 # and b) how the sine and cosine functions relate to a point on
 # the circumference of the unit circle.
 
-from math import sqrt, hypot, pi, fsum
-from degrees import sin, cos, atan2, rev
+import dataclasses
+from math import sqrt, hypot, pi, fsum, fmod
+from degrees import Degrees, sin, cos
 
+# Regions of this file:
+#              coordinate_systems
+#              time_and_angle
+# astronomical_time_and_angle (functions)
+# astronomical_coordinate_systems
+# astronomical_coordinate_transformations (functions)
+# astronomical_predictions (functions)
+#              orbits
+#              the_Moon (functions)
+
+# -------------------- coordinate_systems
+
+@dataclasses.dataclass
 class Cartesian2d:
-    def __init__(self, x, y):
-        self.x, self.y = x, y
+    x: float
+    y: float
 
     # Is not under test
-    def as_tuple(self):
+    def tuple(self) -> tuple[float, float]:
         return self.x, self.y
 
-    def to_polar(self):
+    def polar(self) -> 'Polar':
         return Polar.from_cartesian2d(self)
 
+    def rotate(self, θ: Degrees) -> 'Cartesian2d':
+        return self.polar().rotate(θ).cartesian2d()
+
     @classmethod
-    def from_polar(cls, p):
-        x = p.r * cos(p.θ)
-        y = p.r * sin(p.θ)
+    def from_polar(cls, p: 'Polar') -> 'Cartesian2d':
+        x = p.r * p.θ.cos()
+        y = p.r * p.θ.sin()
         self = cls.__new__(cls)
-        self.__init__(x, y)
+        self.__class__.__init__(self, x, y)
         return self
 
     @classmethod
-    def from_eccentric(cls, eccentric_anomaly, eccentricity):
+    def from_eccentric(cls, E: Degrees, e) -> 'Cartesian2d':
         # This would be easy to understand from a simple diagram.
-        x = cos(eccentric_anomaly) - eccentricity
+        x = E.cos() - e
             # == radius * cos(θ)
-        y = sin(eccentric_anomaly) * sqrt(1 - eccentricity ** 2)
+        y = E.sin() * sqrt(1 - e ** 2)
             # == radius * sin(θ)
         self = cls.__new__(cls)
-        self.__init__(x, y)
+        self.__class__.__init__(self, x, y)
         return self
 
+@dataclasses.dataclass
+class Polar:
+    r: float
+    θ: Degrees
+
+    def tuple(self) -> tuple[float, Degrees]:
+        return self.r, self.θ
+
+    def cartesian2d(self) -> Cartesian2d:
+        return Cartesian2d.from_polar(self)
+
+    def rotate(self, Δθ: Degrees) -> 'Polar':
+        return Polar(self.r, Degrees(self.θ + Δθ).rev())
+
+    @classmethod
+    def from_cartesian2d(cls, p: Cartesian2d) -> 'Polar':
+        r = hypot(p.x, p.y)
+        θ = Degrees.atan2(p.y, p.x).rev()
+        self = cls.__new__(cls)
+        self.__class__.__init__(self, r, θ)
+        return self
+
+@dataclasses.dataclass
 class Cartesian3d:
-    def __init__(self, x, y, z):
-        self.x, self.y, self.z = x, y, z
+    x: float
+    y: float
+    z: float
 
     # Is not under test
-    def as_tuple(self):
+    def tuple(self) -> tuple[float, float, float]:
         return self.x, self.y, self.z
 
-    def to_spherical(self):
+    def spherical(self) -> 'Spherical':
         return Spherical.from_cartesian3d(self)
 
-    def to_cylindrical(self):
+    def cylindrical(self) -> 'Cylindrical':
         return Cylindrical.from_cartesian3d(self)
 
-    def onto_xy_plane(self):
+    def onto_xy_plane(self) -> Cartesian2d:
         return Cartesian2d(self.x, self.y)
 
-    def rotate_about_x(self, θ):
-        p = Cartesian2d(self.y, self.z).to_polar().rotate(θ).to_cartesian2d()
-        return Cartesian3d(self.x, p.x, p.y)
+    def rotate_about_x(self, θ: Degrees) -> 'Cartesian3d':
+        p = Cartesian2d(self.y, self.z).rotate(θ)
+        return self.__class__(self.x, p.x, p.y)
 
-    def decline_about_y(self, θ):
+    def decline_about_y(self, θ: Degrees) -> 'Cartesian3d':
         # Equivalent to:
         # (lambda neg_y, x, z: (x, -neg_y, z)) (
-        #   *Cartesian3d(-y, x, z).rotate_about_x(90 - θ).as_tuple()
+        #   *Cartesian3d(-y, x, z).rotate_about_x(90 - θ).tuple()
         # )
-        # We could have written (y, x, z), but (-y, x, z) has the
-        # nice property that it is just (x, y, z) rotated around z.
+        # This (-y, x, z) is just (x, y, z) rotated around z.
 
-        point = Cartesian2d(self.x, self.z).to_polar().rotate(90 - θ).to_cartesian2d()
-        return Cartesian3d(point.x, self.y, point.y)
+        point = Cartesian2d(self.x, self.z).rotate(90 - θ)
+        return self.__class__(point.x, self.y, point.y)
 
     @classmethod
-    def from_cylindrical(cls, p):
-        q = Polar(p.cylindrical_radius, p.longitude).to_cartesian2d()
-        z = p.height
+    def from_cylindrical(cls, p) -> 'Cartesian3d':
+        q = Polar(p.cylindrical_radius, p.longitude).cartesian2d()
+        z = p.h
         self = cls.__new__(cls)
-        self.__init__(q.x, q.y, z)
+        self.__class__.__init__(self, q.x, q.y, z)
         return self
 
     @classmethod
-    def from_spherical(cls, p):
-        q = p.to_cylindrical().to_cartesian3d()
+    def from_spherical(cls, p) -> 'Cartesian3d':
+        q = p.cylindrical().cartesian3d()
         self = cls.__new__(cls)
-        self.__init__(q.x, q.y, q.z)
+        self.__class__.__init__(self, q.x, q.y, q.z)
         return self
 
+@dataclasses.dataclass
 class Cylindrical:
-    def __init__(self, cylindrical_radius, height, longitude):
-        self.cylindrical_radius, self.height, self.longitude = cylindrical_radius, height, longitude
+    cylindrical_radius: float
+    h: float
+    longitude: Degrees
 
     # Is not under test
-    def as_tuple(self):
-        return self.cylindrical_radius, self.height, self.longitude
+    def tuple(self) -> tuple[float, float, Degrees]:
+        return self.cylindrical_radius, self.h, self.longitude
 
-    def to_spherical(self):
+    def spherical(self) -> 'Spherical':
         return Spherical.from_cylindrical(self)
 
-    def to_cartesian3d(self):
+    def cartesian3d(self) -> Cartesian3d:
         return Cartesian3d.from_cylindrical(self)
 
     @classmethod
-    def from_spherical(cls, p):
-        q = p.onto_meridian_plane().to_cartesian2d()
+    def from_spherical(cls, p) -> 'Cylindrical':
+        q = p.onto_meridian_plane().cartesian2d()
         self = cls.__new__(cls)
-        self.__init__(q.x, q.y, p.longitude)
+        self.__class__.__init__(self, q.x, q.y, p.longitude)
         return self
 
     @classmethod
-    def from_cartesian3d(cls, p):
-        q = p.onto_xy_plane().to_polar()
-        height = p.z
-        return Cylindrical(q.r, height, q.θ)
+    def from_cartesian3d(cls, p) -> 'Cylindrical':
+        q = p.onto_xy_plane().polar()
+        h = p.z
+        return Cylindrical(q.r, h, q.θ)
 
-class OrbitalElements:
-    '''
-    Assume a point O in R³. Assume a nonzero vector ♈︎in R³.
-    Let N be a vector perpendicular to ♈︎.
-    Define P as the plane through O and normal to N.
-
-    Let ☊ be a nonzero vector in P.
-    Let Ω ∈ [0, 2π) be the angle from ♈︎to ☊.
-
-    Let I be a vector perpendicular to ☊, with non-negative projection on N.
-    Let i ∈ [0, π) be the angle from N × ☊ to I.
-
-    Define the orbital plane as the plane containing points O, O + ☊, and O + I.
-
-    Define the orbit as the ellipse in the orbital plane having
-    a focus at O, eccentricity e, measure a of semimajor axis,
-    and angle ω from ☊ to periapsis.
-
-    Periapsis is the vector from O to the nearest point on the ellipse.
-
-    e = sqrt(1 - (b/a)²), where b is measure of semiminor axis.
-
-    Specify the location of the body in the orbit by the true anomaly ν.
-    The true anomaly is the angle at O between periapsis and the body.
-
-    Alternatively, specify the location of the body in the orbit by the
-    eccentric anomaly E, or by the mean anomaly M, which quantities are
-    related to ν as follows:
-
-    tan E = sqrt(1-e²) sin ν / (e + cos ν).
-
-    M = E - e sin E.
-    '''
-    def __init__(self, Ω, i, ω, a, e, M):
-        self.Ω, self.i, self.ω, self.a, self.e, self.M = Ω, i, ω, a, e, M
-
-class Polar:
-    def __init__(self, r, θ):
-        self.r, self.θ = r, θ
-
-    def as_tuple(self):
-        return self.r, self.θ
-
-    def to_cartesian2d(self):
-        return Cartesian2d.from_polar(self)
-
-    def rotate(self, Δθ):
-        return Polar(self.r, rev(self.θ + Δθ))
-
-    @classmethod
-    def from_cartesian2d(cls, p):
-        r = hypot(p.x, p.y)
-        θ = rev(atan2(p.y, p.x))
-        self = cls.__new__(cls)
-        self.__init__(r, θ)
-        return self
-
+@dataclasses.dataclass
 class Spherical:
-    def __init__(self, radius, latitude, longitude):
-        self.radius, self.latitude, self.longitude = radius, latitude, longitude
+    radius: float
+    latitude: Degrees
+    longitude: Degrees
 
-    def as_tuple(self):
+    def tuple(self) -> tuple[float, Degrees, Degrees]:
         return self.radius, self.latitude, self.longitude
 
-    def to_cylindrical(self):
+    def cylindrical(self) -> Cylindrical:
         return Cylindrical.from_spherical(self)
 
-    def to_cartesian3d(self):
+    def cartesian3d(self) -> Cartesian3d:
         return Cartesian3d.from_spherical(self)
 
     # Is not under test
-    def onto_equator_plane(self):
+    def onto_equator_plane(self) -> Polar:
         return Polar(self.radius, self.longitude)
 
-    def onto_meridian_plane(self):
+    def onto_meridian_plane(self) -> Polar:
         return Polar(self.radius, self.latitude)
 
     @classmethod
-    def from_cylindrical(cls, p):
-        q = Cartesian2d(p.cylindrical_radius, p.height).to_polar()
+    def from_cylindrical(cls, p: Cylindrical) -> 'Spherical':
+        q = Cartesian2d(p.cylindrical_radius, p.h).polar()
         self = cls.__new__(cls)
-        self.__init__(q.r, q.θ, p.longitude)
+        self.__class__.__init__(self, q.r, q.θ, p.longitude)
         return self
 
     @classmethod
-    def from_cartesian3d(cls, p):
-        return p.to_cylindrical().to_spherical()
+    def from_cartesian3d(cls, p: Cartesian3d) -> 'Spherical':
+        return p.cylindrical().spherical()
 
+# -------------------- time_and_angle
 
+@dataclasses.dataclass
+class Date:
+    year: int
+    month: int
+    day: int
+    def day_number(self) -> float:
+        """
+        This formula models the common astronomical calendar,
+        which coincides with the Gregorian calendar for years 1901-2099.
+        On the other hand it is actually a Julian calendar in that it has
+        no exceptions to the rule that every fourth year is a leap year.
+        """
+        return (
+            367 * self.year
+            - (7 * (self.year + (self.month + 9) // 12)) // 4
+            + (275 * self.month) // 9
+            + self.day
+            - 730530)
 
-def arcdegrees_to_hours(arcdegrees):
-    return arcdegrees * 24 / 360.0
+class Seconds(float):
+    def minutes(self) -> float:
+        return self / 60.0
 
-def hours_to_arcdegrees(hours):
-    return rev(hours * 360 / 24.0)
+    @classmethod
+    def fromhours(cls, hours: float) -> 'Seconds':
+        return cls(3600 * hours)
 
-def arcdegrees_to_arcminutes(arcdegrees):
-    return 60 * arcdegrees
+    @classmethod
+    def fromminutes(cls, minutes: float) -> 'Seconds':
+        return cls(60 * minutes)
 
-# Is not under test
-def arcdegrees_to_arcseconds(arcdegrees):
-    return 3600 * arcdegrees
+class Arcdegrees(Degrees):
+    def hours(self) -> float:
+        return self * 24 / 360.0
 
-def hours_to_seconds(hours):
-    return 3600 * hours
+    def arcminutes(self) -> float:
+        return 60 * self
 
-def minutes_to_seconds(minutes):
-    return 60 * minutes
+    def arcseconds(self) -> Seconds:
+        return Seconds(3600 * self)
 
-def seconds_to_minutes(seconds):
-    return seconds / 60.0
+    @classmethod
+    def fromhours(cls, hours: float) -> 'Arcdegrees':
+        return cls(hours * 360 / 24.0).rev()
 
-def day_number(year, month, day):
-    """
-    This formula models the common astronomical calendar,
-    which coincides with the Gregorian calendar for years 1901-2099.
-    On the other hand it is actually a Julian calendar in that it has
-    no exceptions to the rule that every fourth year is a leap year.
-    """
-    return (
-        367 * year
-        - (7 * (year + (month + 9) // 12)) // 4
-        + (275 * month) // 9
-        + day
-        - 730530)
+# -------------------- astronomical_time_and_angle
 
-
-
-def GMST0(mean_longitude):
+def toGMST0(Ls: Degrees) -> Arcdegrees:
     """
     Sidereal time (in other words, right ascension in hours)
     at the 00:00 meridian at Greenwich right now.
     """
-    return arcdegrees_to_hours(rev(mean_longitude + 180))
+    return Arcdegrees(Degrees(Ls + 180).rev()).hours()
 
-def sidereal_time(GMST0, UT, terrestrial_longitude):
+def to_sidereal_time(GMST0, UT, terrestrial_longitude: Degrees) -> float:
     """
-    Locally adjusted sidereal time: more info at function GMST0.
+    Locally adjusted sidereal time: more info at function toGMST0.
     """
-    # TODO: normalize to 24 hours
-    return GMST0 + UT + arcdegrees_to_hours(terrestrial_longitude)
+    return fmod(GMST0 + UT + Arcdegrees(terrestrial_longitude).hours(), 24.0)
 
-def hour_angle(sidereal_time, RA):
-    # TODO: normalize to 24 hours
-    return sidereal_time - RA
+def hour_angle(sidereal_time, RA) -> float:
+    return fmod(sidereal_time - RA, 24.0)
 
-
-
-def cartesian2d_in_plane_of_orbit(eccentric_anomaly, eccentricity, distance):
-    (x, y) = (
-        distance * (cos(eccentric_anomaly) - eccentricity),
-        distance * sqrt(1 - eccentricity ** 2) * sin(eccentric_anomaly),
-    )
-    return (x, y)
-
-def eccentric_anomaly_first_approximation(mean_anomaly, eccentricity):
+def obliquity_of_the_ecliptic(day_number) -> float:
     """
-    This truncated Taylor series is claimed accurate enough for a small
-    eccentricity such as that of the Sun-Earth orbit (0.017).
-    Properly the eccentric anomaly is the solution E
-    of Kepler's equation in mean anomaly M and eccentricity e:
-        M = E - e sin(E).
-    Thanks to Paul Schlyter himself for clarifying this in a
-    private email which, frankly, I have not yet fully analyzed.
+    Inclination of Earth's axis of rotation
+    to its plane of revolution.
     """
-    return rev(
-        mean_anomaly
-        + (180 / pi) * eccentricity * sin(mean_anomaly)
-        * (1 + eccentricity * cos(mean_anomaly)))
-
-    # Note if we write E(n+1) = M + e sin (E(n)) and iterate,
-    # we get this, which is supposedly equivalent!?
-    # E(1) = M + e sin (E(0))
-    # E(2) = M + e sin ( M + e sin (E(0)) )
-    #      = M + e sin (M) cos (e sin (E(0))) + e cos (M) sin (e sin (E(0)) )
-    # E(3) = M + e sin ( M + e sin ( M + e sin ( E(0) ) ) )
+    return 23.4393 - 3.563E-7 * day_number
 
 def ecliptic_anomaly_to_longitude(
-        longitude_of_periapsis,
-        angle_from_periapsis,
-):
+        longitude_of_periapsis: Degrees,
+        angle_from_periapsis: Degrees,
+) -> Degrees:
     """
     Ecliptic longitude, sometimes written simply as
     "longitude", has its zero at the ascending node.
@@ -329,27 +300,55 @@ def ecliptic_anomaly_to_longitude(
     averages out the position over the whole revolution
     to measure out a fictitious steady motion.
     """
-    return rev(longitude_of_periapsis + angle_from_periapsis)
+    return Degrees(longitude_of_periapsis + angle_from_periapsis).rev()
 
-def ecliptic_to_celestial(distance, latitude, longitude, oblecl):
-    (distance1, Decl, RA) = Spherical(
-            distance,
-            latitude,
-            longitude
-        ).to_cartesian3d().rotate_about_x(oblecl).to_spherical().as_tuple()
-    return (distance1, Decl, RA)
-
-def iterate_for_eccentric_anomaly(M, e, E0):
-
-    def iterate_once_for_eccentric_anomaly(M, e, E0):
-        return E0 - (E0 - (180 / pi) * e * sin(E0) - M) / (1 - e * cos(E0))
-
+def sun_earth_elements(day_number) -> tuple[Degrees, float, float, Degrees]:
     """
-    Approximately invert Kepler's equation M = E - e sin E
-    by Newton's method.
+    Why this function is named "sun_earth_elements":
+    We're primarily concerned with the Earth-based observer,
+    so we'll use these orbital elements to determine how the Sun
+    moves through Earth's sky. Of course, outside of that frame
+    it is more sensible to interpret these elements vice versa,
+    with Earth moving around the Sun.
     """
-    E1 = E0
-    E0 = 0
+
+    ω = Degrees(282.9404 + 4.70935E-5 * day_number).rev()   # longitude of perihelion
+    a = 1.000000                                   # mean_distance, in a.u.
+    e = 0.016709 - 1.151E-9 * day_number           # eccentricity
+    Ms = Degrees(356.0470 + 0.9856002585 * day_number).rev() # mean anomaly
+    return (ω, a, e, Ms)
+
+def eccentric_anomaly_first_approximation(M: Degrees, e) -> Degrees:
+    """
+    This truncated Taylor series is claimed accurate enough for a small
+    eccentricity such as that of the Sun-Earth orbit (0.017).
+    Properly the eccentric anomaly is the solution E
+    of Kepler's equation in mean anomaly M and eccentricity e:
+        M = E - e sin(E).
+    Thanks to Paul Schlyter himself for clarifying this in a
+    private email which, frankly, I have not yet fully analyzed.
+    """
+    return Degrees(
+        M
+        + (180 / pi) * e * M.sin()
+        * (1 + e * M.cos())).rev()
+
+    # Note if we write E(n+1) = M + e sin (E(n)) and iterate,
+    # we get this, which is supposedly equivalent!?
+    # E(1) = M + e sin (E(0))
+    # E(2) = M + e sin ( M + e sin (E(0)) )
+    #      = M + e sin (M) cos (e sin (E(0))) + e cos (M) sin (e sin (E(0)) )
+    # E(3) = M + e sin ( M + e sin ( M + e sin ( E(0) ) ) )
+
+def iterate_for_eccentric_anomaly(M, e, E0: Degrees) -> Degrees:
+
+    def iterate_once_for_eccentric_anomaly(M, e, E0: Degrees) -> Degrees:
+        return Degrees(E0 - (E0 - (180 / pi) * e * E0.sin() - M) / (1 - e * E0.cos()))
+
+    # Approximately invert Kepler's equation M = E - e sin E
+    # by Newton's method.
+    E1: Degrees = E0
+    E0 = Degrees(0)
     k = 0
     while abs(E1 - E0) >= 0.005 and k < 30:
         k = k + 1
@@ -357,7 +356,54 @@ def iterate_for_eccentric_anomaly(M, e, E0):
         E1 = iterate_once_for_eccentric_anomaly(M, e, E0)
     return E1
 
-def position_from_plane_of_orbit_to_ecliptic(r, θ, Ω, i, ω):
+# -------------------- astronomical_coordinate_systems
+
+@dataclasses.dataclass
+class Celestial:
+    RA: float
+    Decl: Degrees
+
+@dataclasses.dataclass
+class Geographic:
+    latitude: Degrees
+    longitude: Degrees
+
+@dataclasses.dataclass
+class Horizontal:
+    altitude: float
+    azimuth: float
+
+    def tuple(self) -> tuple[float, float]:
+        return (self.altitude, self.azimuth)
+
+    @classmethod
+    def from_celestial(cls, mlon: Degrees,
+                       celestial: Celestial,
+                       hours_UT,
+                       geographic: Geographic) -> 'Horizontal':
+        _distance, altitude, azimuth = Spherical(
+                1.0,
+                celestial.Decl,
+                Arcdegrees.fromhours(hour_angle(
+                    to_sidereal_time(toGMST0(mlon), hours_UT, geographic.longitude),
+                    Arcdegrees(celestial.RA).hours(),
+                )),
+            ).cartesian3d().decline_about_y(geographic.latitude).spherical().tuple()
+
+        azimuth = Degrees(azimuth + 180).rev()
+        return cls(altitude, azimuth)
+
+# -------------------- astronomical_coordinate_transformations
+
+def ecliptic_to_celestial(distance, latitude, longitude: Degrees, obliquity):
+    (distance1, Decl, RA) = Spherical(
+            distance,
+            latitude,
+            longitude
+        ).cartesian3d().rotate_about_x(obliquity).spherical().tuple()
+    return (distance1, Decl, RA)
+
+def position_from_plane_of_orbit_to_ecliptic(polar: Polar, Ω: Degrees, i: Degrees, ω):
     # TODO: break this down to easily understood operations
     #   using angle sum formulas etc.
     #                           _ _     _ _     _
@@ -372,166 +418,177 @@ def position_from_plane_of_orbit_to_ecliptic(r, θ, Ω, i, ω):
     # sin(a + b) = sin(a)cos(b) + cos(a)sin(b)
     # sin(a - b) = sin(a)cos(b) - cos(a)sin(b)
 
-    (xeclip, yeclip, zeclip) = (
-        r * (
-            cos(Ω) * cos(θ + ω)
-            - sin(Ω) * sin(θ + ω) * cos(i)
+    return Cartesian3d(
+        polar.r * (
+            Ω.cos() * cos(polar.θ + ω)
+            - Ω.sin() * sin(polar.θ + ω) * i.cos()
         ),
-        r * (
-            sin(Ω) * cos(θ + ω)
-            + cos(Ω) * sin(θ + ω) * cos(i)
+        polar.r * (
+            Ω.sin() * cos(polar.θ + ω)
+            + Ω.cos() * sin(polar.θ + ω) * i.cos()
         ),
-        r * sin(θ + ω) * sin(i),
+        polar.r * sin(polar.θ + ω) * i.sin(),
     )
-    return (xeclip, yeclip, zeclip)
 
-def sun_earth_celestial_to_alt_azimuth(mlon, Decl, RA, hours_UT, lat, lon):
-    distance, altitude, azimuth = Spherical(
-            1.0,
-            Decl,
-            hours_to_arcdegrees(hour_angle(
-                sidereal_time(GMST0(mlon), hours_UT, lon),
-                arcdegrees_to_hours(RA),
-            )),
-        ).to_cartesian3d().decline_about_y(lat).to_spherical().as_tuple()
-
-    azimuth = rev(azimuth + 180)
-    return (altitude, azimuth)
-
-def sun_earth_ecliptic_to_celestial(distance, true_lon, oblecl):
+def sun_earth_ecliptic_to_celestial(distance, true_lon: Degrees, obliquity: Degrees):
     # equivalent to:
-    # ecliptic_to_celestial(distance, 0.0, true_lon, oblecl)
+    # ecliptic_to_celestial(distance, 0.0, true_lon, obliquity)
 
-    p = Polar(distance, true_lon).to_cartesian2d()
-    q = Cartesian3d(p.x, p.y, 0.0).rotate_about_x(oblecl).to_spherical()
-    distance1, Decl, RA = q.radius, q.latitude, q.longitude
-    return (distance1, Decl, RA)
+    p = Polar(distance, true_lon).cartesian2d()
+    q = Cartesian3d(p.x, p.y, 0.0).rotate_about_x(obliquity).spherical()
+    return Celestial(RA=q.longitude, Decl=q.latitude)
 
+# -------------------- astronomical_predictions
 
+# return: (distance, true_longitude, Ls, obliquity, )
+def date_to_sun_earth_ecliptic(date: Date):
 
-# return: (distance, true_longitude, mean_longitude, oblecl, )
-def date_to_sun_earth_ecliptic(year, month, day):
-
-    # return: (ω, a, e, M, oblecl, )
-    def sun_earth_elements_and_oblecl(year, month, day):
-        d = day_number(year, month, day)
+    # return: (ω, a, e, M, obliquity, )
+    def sun_earth_elements_and_obliquity(
+            date: Date) -> tuple[Degrees, float, float, Degrees, float]:
+        d = date.day_number()
         return sun_earth_elements(d) + (obliquity_of_the_ecliptic(d), )
 
     # return: Polar(distance, ecliptic_angle)
-    def ecliptic_polar(M, e):
+    def ecliptic_polar(Ms: Degrees, e) -> Polar:
         return Cartesian2d.from_eccentric(
-            eccentric_anomaly_first_approximation(M, e),
+            eccentric_anomaly_first_approximation(Ms, e),
             e,
-        ).to_polar()
+        ).polar()
 
-    # return: (distance, true_longitude, mean_longitude, oblecl, )
-    def longitudes(M, e, ω, oblecl):
-        p = ecliptic_polar(M, e)
-        (distance, true_anomaly) = p.r, p.θ
+    # return: (distance, true_longitude, Ls, obliquity, )
+    def longitudes(Ms: Degrees, e, ω: Degrees, obliquity: Degrees):
+        p = ecliptic_polar(Ms, e)
+        (distance, ν) = p.r, p.θ
         return (
             distance,
-            ecliptic_anomaly_to_longitude(ω, true_anomaly),
-            ecliptic_anomaly_to_longitude(ω, M),
-            oblecl,
+            ecliptic_anomaly_to_longitude(ω, ν),
+            ecliptic_anomaly_to_longitude(ω, Ms),
+            obliquity,
         )
 
-    # return: (distance, true_longitude, mean_longitude, oblecl, )
-    def date_to_sun_earth_ecliptic_1(year, month, day):
-        (ω, a_ignored, e, M, oblecl, ) = sun_earth_elements_and_oblecl(
-            year,
-            month,
-            day,
+    # return: (distance, true_longitude, Ls, obliquity, )
+    def date_to_sun_earth_ecliptic_1(date: Date):
+        (ω, _a, e, Ms, obliquity, ) = sun_earth_elements_and_obliquity(
+            date
         )
-        return longitudes(M, e, ω, oblecl)
+        return longitudes(Ms, e, ω, obliquity)
 
-    return date_to_sun_earth_ecliptic_1(year, month, day)
+    return date_to_sun_earth_ecliptic_1(date)
 
-def obliquity_of_the_ecliptic(day_number):
-    """
-    Inclination of Earth's axis of rotation
-    to its plane of revolution.
-    """
-    return 23.4393 - 3.563E-7 * day_number
+def time_and_location_to_sun_horizontal(date: Date,
+                                         hours_UT, geographic: Geographic):
 
-def sun_earth_elements(day_number):
-    """
-    Why this function is named "sun_earth_elements":
-    We're primarily concerned with the Earth-based observer,
-    so we'll use these orbital elements to determine how the Sun
-    moves through Earth's sky. Of course, outside of that frame
-    it is more sensible to interpret these elements vice versa,
-    with Earth moving around the Sun.
-    """
-
-    ω = rev(282.9404 + 4.70935E-5 * day_number)    # longitude of perihelion
-    a = 1.000000                                   # mean_distance, in a.u.
-    e = 0.016709 - 1.151E-9 * day_number           # eccentricity
-    M = rev(356.0470 + 0.9856002585 * day_number)  # mean anomaly
-    return (ω, a, e, M)
-
-def time_and_location_to_sun_alt_azimuth(year, month, day, hours_UT, lat, lon):
-
-    def sun_earth_ecliptic_to_celestial_for_alt_azimuth(
+    def sun_earth_ecliptic_to_celestial_for_horizontal(
         distance0,
         true_longitude,
-        mean_longitude,
-        oblecl,
+        Ls,
+        obliquity: Degrees,
     ):
-        return (mean_longitude, ) + sun_earth_ecliptic_to_celestial(
+        return (Ls, sun_earth_ecliptic_to_celestial(
             distance0,
             true_longitude,
-            oblecl,
-        )[1:3] + (hours_UT, lat, lon, )
+            obliquity,
+        ), hours_UT, geographic)
 
-    (altitude, azimuth) = sun_earth_celestial_to_alt_azimuth(
-        *sun_earth_ecliptic_to_celestial_for_alt_azimuth(
-            *date_to_sun_earth_ecliptic(
-                year,
-                month,
-                day,
-            )
+    (altitude, azimuth) = Horizontal.from_celestial(
+        *sun_earth_ecliptic_to_celestial_for_horizontal(
+            *date_to_sun_earth_ecliptic(date)
         )
-    )
+    ).tuple()
 
     return (altitude, azimuth)
 
+# -------------------- orbits
 
+@dataclasses.dataclass
+class OrbitalElements:
+    '''
+    Let ☉,♈︎₀∈R³ and ☉≠♈︎₀. Let ♈︎=♈︎₀-☉. Call ♈︎₀ the vernal point.
 
-def moon_elements(d):
-    Ω = rev(125.1228 - 0.0529538083 * d)   # Long asc. node
-    i = 5.1454                             # Inclination
-    ω = rev(318.0634 + 0.1643573223 * d)   # Arg. of perigee
-    a = 60.2666                            # Mean distance,
-                                           #   in Earth equatorial radii
-    e = 0.054900                           # Eccentricity
-    M = rev(115.3654 + 13.0649929509 * d)  # Mean anomaly
-    return OrbitalElements(Ω, i, ω, a, e, M)
+    Let N∈R³ and N⟂♈︎. Then there exists a unique plane P
+    such that ☉∈P and P⟂N. We will use P as a reference plane.
+    Let ☊₀∈P and ☊₀≠☉. Let ☊=☊₀-☉. Call ☊₀ the ascending node.
 
-def moon_perturbation_arguments(mlon, moon_N, moon_ω, moon_M, M):
-    Lm = moon_N + moon_ω + moon_M
-    (
-        Ls,  # Sun's mean longitude
-        Ms,  # Sun's mean anomaly
-        Mm,  # Moon's mean anomaly
-        D,   # Moon's mean elongation
-        F,   # Moon's argument of latitude
-    ) = (
-        mlon,
-        M,
-        moon_M,
-        rev(Lm - mlon),
-        rev(Lm - moon_N),
+    Let O=(0,0,0) and Ω=m∠♈︎O☊ , where
+    recall that for all a₀,b₀,c₀∈R³,
+    m∠a₀c₀b₀=m∠aOb=arccos(â⋅b̂), where
+    a=a₀-c₀, b=b₀-c₀, â=a/‖a‖, and b̂=b/‖b‖.
+    Call Ω the longitude of the ascending node.
+
+    Recall that for all a₀,b₀,c₀∈R³, m∠a₀c₀b₀∈[0,π].
+    Let I₀∈R³ and I=I₀-☉, such that I⟂☊ and I⋅N>0.
+    Let i=m∠(N×☊)OI so that i∈[0,π). Call i the inclination.
+
+    Define the orbital plane as the plane containing
+    points ☉, ☊₀, and I₀.
+
+    Define the orbit as the ellipse in the orbital plane having
+    a focus at ☉, eccentricity e, measure a of semimajor axis,
+    and angle ω from ☊ to periapsis.
+
+    Periapsis is the vector from ☉ to the nearest point on the orbit.
+
+    e = sqrt(1 - (b/a)²), where b is measure of semiminor axis.
+
+    Specify the location of the body in the orbit by the true anomaly ν.
+    The true anomaly is the angle at ☉ between periapsis and the body.
+
+    Alternatively, specify the location of the body in the orbit by the
+    eccentric anomaly E, or by the mean anomaly M, which quantities are
+    related to ν as follows:
+
+    tan E = sqrt(1-e²) sin ν / (e + cos ν).
+
+    M = E - e sin E.
+    '''
+    Ω: Degrees
+    i: Degrees
+    ω: Degrees
+    a: float
+    e: float
+    M: Degrees
+
+# -------------------- the_Moon
+
+def moon_elements(d) -> OrbitalElements:
+    return OrbitalElements(
+        Ω = Degrees(125.1228 - 0.0529538083 * d).rev(),  # Long asc. node
+        i = Degrees(5.1454),                             # Inclination
+        ω = Degrees(318.0634 + 0.1643573223 * d).rev(),  # Arg. of perigee
+        a = 60.2666,                           # Mean distance,
+                                               #   in Earth equatorial radii
+        e = 0.054900,                          # Eccentricity
+        M = Degrees(115.3654 + 13.0649929509 * d).rev(), # Mean anomaly
     )
-    return (Ls, rev(Lm), Ms, Mm, D, F)
 
-def moon_2_distance_perturbation_terms(Ls, Lm, Ms, Mm, D, F):
+def moon_perturbation_arguments(Ls, moon_N, moon_ω, Mm, Ms) -> tuple[
+                Degrees, Degrees, Degrees, Degrees, Degrees, Degrees]:
+    Lm = moon_N + moon_ω + Mm # moon mean longitude
+    (
+        D,  # moon mean elongation
+        F,  # moon argument of latitude
+    ) = (
+        Degrees(Lm - Ls).rev(),
+        Degrees(Lm - moon_N).rev(),
+    )
+    return (
+            Ls,
+            Degrees(Lm).rev(),
+            Ms, # sun mean anomaly
+            Mm, # moon mean anomaly
+            D,
+            F)
+
+def moon_2_distance_perturbation_terms( _Ls, _Lm, _Ms, Mm, D, _F) -> tuple[float, float]:
     # all & only the terms larger than 0.1 Earth radii
     return (
         -0.58 * cos(Mm - 2 * D),
         -0.46 * cos(2 * D),
     )
 
-def moon_5_latitude_perturbation_terms(Ls, Lm, Ms, Mm, D, F):
+def moon_5_latitude_perturbation_terms(
+        _Ls, _Lm, _Ms, Mm, D, F) -> tuple[ float, float, float, float, float]:
     # All & only the terms larger than 0.01 degrees
     # aiming for 1-2 arcmin accuracy.
     # Even with the first term the error is usually under 0.15 degree.
@@ -543,7 +600,9 @@ def moon_5_latitude_perturbation_terms(Ls, Lm, Ms, Mm, D, F):
         +0.017 * sin(2 * Mm + F),
     )
 
-def moon_12_longitude_perturbation_terms(Ls, Lm, Ms, Mm, D, F):
+def moon_12_longitude_perturbation_terms( _Ls, _Lm, Ms, Mm, D, F) -> tuple[
+        float, float, float, float, float, float,
+        float, float, float, float, float, float]:
     # All & only the terms larger than 0.01 degrees,
     # aiming for 1-2 arcmin accuracy.
     # Even with the first two terms the error is usually under 0.25 degree.
@@ -563,11 +622,18 @@ def moon_12_longitude_perturbation_terms(Ls, Lm, Ms, Mm, D, F):
         +0.011 * sin(Mm - 4 * D),
     )
 
-def date_and_sun_mean_to_moon_ecliptic(year, month, day, mean_longitude, mean_anomaly):
+def cartesian2d_in_plane_of_orbit(E: Degrees, e, distance):
+    return Cartesian2d(
+        distance * (E.cos() - e),
+        distance * sqrt(1 - e ** 2) * E.sin(),
+    )
+
+def date_and_sun_mean_to_moon_ecliptic(date: Date,
+                                       Ls: Degrees, M: Degrees):
     # TODO: Generalize. Much of this is not specific to the moon.
 
     def moon_elliptic_to_polar(a, e, M):
-        return Cartesian2d(*cartesian2d_in_plane_of_orbit(
+        return cartesian2d_in_plane_of_orbit(
                     iterate_for_eccentric_anomaly(
                         M,
                         e,
@@ -575,38 +641,35 @@ def date_and_sun_mean_to_moon_ecliptic(year, month, day, mean_longitude, mean_an
                     ),
                     e,
                     a
-                )
-            ).to_polar().as_tuple()
+                ).polar()
 
-    def moon_elements_to_spherical(elems):
-        return Cartesian3d(*position_from_plane_of_orbit_to_ecliptic(
-                *(moon_elliptic_to_polar(elems.a, elems.e, elems.M) + (elems.Ω, elems.i, elems.ω, ))
-            )).to_cylindrical().to_spherical()
+    def moon_elements_to_spherical(elems: OrbitalElements) -> Spherical:
+        return Spherical.from_cartesian3d(position_from_plane_of_orbit_to_ecliptic(
+                moon_elliptic_to_polar(elems.a, elems.e, elems.M),
+                elems.Ω,
+                elems.i,
+                elems.ω
+                ))
 
-    def moon_elements_to_spherical_perturbation(elems):
-
+    def moon_elements_to_spherical_perturbation(elems: OrbitalElements) -> map:
+        args = moon_perturbation_arguments(Ls, elems.Ω, elems.ω, elems.M, M)
         return map (
             fsum,
-            (lambda args : (
+            (
                 moon_2_distance_perturbation_terms(*args),
                 moon_5_latitude_perturbation_terms(*args),
                 moon_12_longitude_perturbation_terms(*args),
-            )) (moon_perturbation_arguments(
-                mean_longitude,
-                elems.Ω,
-                elems.ω,
-                elems.M,
-                mean_anomaly,
-            )),
+            )
         )
 
-    def date_and_sun_mean_to_moon_ecliptic_1(year, month, day):
+    def date_and_sun_mean_to_moon_ecliptic_1(date: Date):
+        elems = moon_elements(date.day_number())
         return map(sum, zip(
-            *(lambda elems: (
-                moon_elements_to_spherical(elems).as_tuple(),
+            *(
+                moon_elements_to_spherical(elems).tuple(),
                 moon_elements_to_spherical_perturbation(elems),
-            )) (moon_elements(day_number(year, month, day)))
+            )
         ))
 
-    (pdist, plat, plon) = date_and_sun_mean_to_moon_ecliptic_1(year, month, day)
+    (pdist, plat, plon) = date_and_sun_mean_to_moon_ecliptic_1(date)
     return (pdist, plat, plon)
