@@ -3,7 +3,7 @@ Provide versions of math functions for angles in degrees.
 '''
 # pylint: disable=invalid-name
 import math
-import numbers
+# import numbers
 
 class Degrees(float): # numbers.Real):
     '''
