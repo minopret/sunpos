@@ -18,20 +18,20 @@
 # the circumference of the unit circle.
 
 import dataclasses
-from math import sqrt, hypot, pi, fsum, fmod
+from math import sqrt, hypot, degrees, fsum, fmod
 from degrees import Degrees, sin, cos
 
-# Regions of this file:
-#              coordinate_systems
-#              time_and_angle
-# astronomical_time_and_angle (functions)
-# astronomical_coordinate_systems
-# astronomical_coordinate_transformations (functions)
-# astronomical_predictions (functions)
-#              orbits
-#              the_Moon (functions)
+#   Regions of this file:
+# 1              coordinate_systems
+# 2              time_and_angle
+# 3 astronomical_time_and_angle (functions)
+# 4 astronomical_coordinate_systems
+# 5 astronomical_coordinate_transformations (functions)
+# 6 astronomical_predictions (functions)
+# 7              orbits
+# 8              the_Moon (functions)
 
-# -------------------- coordinate_systems
+# 1 -------------------- coordinate_systems
 
 @dataclasses.dataclass
 class Cartesian2d:
@@ -52,17 +52,19 @@ class Cartesian2d:
     def from_polar(cls, p: 'Polar') -> 'Cartesian2d':
         x = p.r * p.θ.cos()
         y = p.r * p.θ.sin()
+
         self = cls.__new__(cls)
         self.__class__.__init__(self, x, y)
         return self
 
     @classmethod
     def from_eccentric(cls, E: Degrees, e) -> 'Cartesian2d':
-        # This would be easy to understand from a simple diagram.
+        # Would this be easy to understand from a diagram?
         x = E.cos() - e
             # == radius * cos(θ)
         y = E.sin() * sqrt(1 - e ** 2)
             # == radius * sin(θ)
+
         self = cls.__new__(cls)
         self.__class__.__init__(self, x, y)
         return self
@@ -85,6 +87,7 @@ class Polar:
     def from_cartesian2d(cls, p: Cartesian2d) -> 'Polar':
         r = hypot(p.x, p.y)
         θ = Degrees.atan2(p.y, p.x).rev()
+
         self = cls.__new__(cls)
         self.__class__.__init__(self, r, θ)
         return self
@@ -110,6 +113,7 @@ class Cartesian3d:
 
     def rotate_about_x(self, θ: Degrees) -> 'Cartesian3d':
         p = Cartesian2d(self.y, self.z).rotate(θ)
+
         return self.__class__(self.x, p.x, p.y)
 
     def decline_about_y(self, θ: Degrees) -> 'Cartesian3d':
@@ -119,13 +123,15 @@ class Cartesian3d:
         # )
         # This (-y, x, z) is just (x, y, z) rotated around z.
 
-        point = Cartesian2d(self.x, self.z).rotate(90 - θ)
+        point = Cartesian2d(self.x, self.z).rotate(Degrees(90 - θ))
+
         return self.__class__(point.x, self.y, point.y)
 
     @classmethod
     def from_cylindrical(cls, p) -> 'Cartesian3d':
         q = Polar(p.cylindrical_radius, p.longitude).cartesian2d()
         z = p.h
+
         self = cls.__new__(cls)
         self.__class__.__init__(self, q.x, q.y, z)
         return self
@@ -133,6 +139,7 @@ class Cartesian3d:
     @classmethod
     def from_spherical(cls, p) -> 'Cartesian3d':
         q = p.cylindrical().cartesian3d()
+
         self = cls.__new__(cls)
         self.__class__.__init__(self, q.x, q.y, q.z)
         return self
@@ -156,6 +163,7 @@ class Cylindrical:
     @classmethod
     def from_spherical(cls, p) -> 'Cylindrical':
         q = p.onto_meridian_plane().cartesian2d()
+
         self = cls.__new__(cls)
         self.__class__.__init__(self, q.x, q.y, p.longitude)
         return self
@@ -191,6 +199,7 @@ class Spherical:
     @classmethod
     def from_cylindrical(cls, p: Cylindrical) -> 'Spherical':
         q = Cartesian2d(p.cylindrical_radius, p.h).polar()
+
         self = cls.__new__(cls)
         self.__class__.__init__(self, q.r, q.θ, p.longitude)
         return self
@@ -199,7 +208,7 @@ class Spherical:
     def from_cartesian3d(cls, p: Cartesian3d) -> 'Spherical':
         return p.cylindrical().spherical()
 
-# -------------------- time_and_angle
+# 2 -------------------- time_and_angle
 
 @dataclasses.dataclass
 class Date:
@@ -246,7 +255,7 @@ class Arcdegrees(Degrees):
     def fromhours(cls, hours: float) -> 'Arcdegrees':
         return cls(hours * 360 / 24.0).rev()
 
-# -------------------- astronomical_time_and_angle
+# 3 -------------------- astronomical_time_and_angle
 
 def toGMST0(Ls: Degrees) -> Arcdegrees:
     """
@@ -330,7 +339,7 @@ def eccentric_anomaly_first_approximation(M: Degrees, e) -> Degrees:
     """
     return Degrees(
         M
-        + (180 / pi) * e * M.sin()
+        + degrees(e * M.sin())
         * (1 + e * M.cos())).rev()
 
     # Note if we write E(n+1) = M + e sin (E(n)) and iterate,
@@ -341,22 +350,28 @@ def eccentric_anomaly_first_approximation(M: Degrees, e) -> Degrees:
     # E(3) = M + e sin ( M + e sin ( M + e sin ( E(0) ) ) )
 
 def iterate_for_eccentric_anomaly(M, e, E0: Degrees) -> Degrees:
+    # Approximately invert Kepler's equation M = E - e sin E
+    # by Newton's method, E1 = E0 - f(E0) / f'(E0),
+    # where f(E) = E - e sin(E) - M,
+    # so that Newton's method approaches E such that 0 = E - e sin(E) - M.
 
     def iterate_once_for_eccentric_anomaly(M, e, E0: Degrees) -> Degrees:
-        return Degrees(E0 - (E0 - (180 / pi) * e * E0.sin() - M) / (1 - e * E0.cos()))
+        # Take one step of Newton's method, E1 = E0 - f(E0) / f'(E0).
+        # Here f(E) = E - e sin(E) - M, so that f'(E) = 1 - e cos(E). That is,
+        # E1 = E0 - (E - e sin(E) - M) / (1 - e cos(E)).
+        radians = E0 - (E0 - degrees(e * E0.sin()) - M) / (1 - e * E0.cos())
+        return Degrees(radians)
 
-    # Approximately invert Kepler's equation M = E - e sin E
-    # by Newton's method.
     E1: Degrees = E0
     E0 = Degrees(0)
     k = 0
     while abs(E1 - E0) >= 0.005 and k < 30:
-        k = k + 1
+        k += 1
         E0 = E1
         E1 = iterate_once_for_eccentric_anomaly(M, e, E0)
     return E1
 
-# -------------------- astronomical_coordinate_systems
+# 4 -------------------- astronomical_coordinate_systems
 
 @dataclasses.dataclass
 class Celestial:
@@ -393,7 +408,7 @@ class Horizontal:
         azimuth = Degrees(azimuth + 180).rev()
         return cls(altitude, azimuth)
 
-# -------------------- astronomical_coordinate_transformations
+# 5 -------------------- astronomical_coordinate_transformations
 
 def ecliptic_to_celestial(distance, latitude, longitude: Degrees, obliquity):
     (distance1, Decl, RA) = Spherical(
@@ -438,7 +453,7 @@ def sun_earth_ecliptic_to_celestial(distance, true_lon: Degrees, obliquity: Degr
     q = Cartesian3d(p.x, p.y, 0.0).rotate_about_x(obliquity).spherical()
     return Celestial(RA=q.longitude, Decl=q.latitude)
 
-# -------------------- astronomical_predictions
+# 6 -------------------- astronomical_predictions
 
 # return: (distance, true_longitude, Ls, obliquity, )
 def date_to_sun_earth_ecliptic(date: Date):
@@ -499,46 +514,48 @@ def time_and_location_to_sun_horizontal(date: Date,
 
     return (altitude, azimuth)
 
-# -------------------- orbits
+# 7 -------------------- orbits
 
 @dataclasses.dataclass
 class OrbitalElements:
     '''
-    Let ☉,♈︎₀∈R³ and ☉≠♈︎₀. Let ♈︎=♈︎₀-☉. Call ♈︎₀ the vernal point.
+    (☉,♈︎) Let ☉∈R³. Without loss of generality, let ☉ be the origin.
+    Let ♈︎∈R³ and ☉≠♈︎. Call ♈︎ the vernal point.
 
-    Let N∈R³ and N⟂♈︎. Then there exists a unique plane P
-    such that ☉∈P and P⟂N. We will use P as a reference plane.
-    Let ☊₀∈P and ☊₀≠☉. Let ☊=☊₀-☉. Call ☊₀ the ascending node.
+    (☊) Let N∈R³ and N⟂♈︎. Then there exists a unique plane P such that ☉∈P and P⟂N.
+    We will use P as a reference plane. Let ☊∈P and ☊≠☉.
+    Call ☊ the ascending node.
 
-    Let O=(0,0,0) and Ω=m∠♈︎O☊ , where
-    recall that for all a₀,b₀,c₀∈R³,
-    m∠a₀c₀b₀=m∠aOb=arccos(â⋅b̂), where
-    a=a₀-c₀, b=b₀-c₀, â=a/‖a‖, and b̂=b/‖b‖.
-    Call Ω the longitude of the ascending node.
+    (m∠aob) Recall that for all a,b,o∈R³ such that a≠o and b≠o,
+    m∠aob=arccos(â₀⋅b̂₀), where a₀=a-o, b₀=b-o,
+    â₀=a₀/‖a₀‖, and b̂₀=b₀/‖b₀‖. Recall that m∠aob∈[0,π].
 
-    Recall that for all a₀,b₀,c₀∈R³, m∠a₀c₀b₀∈[0,π].
-    Let I₀∈R³ and I=I₀-☉, such that I⟂☊ and I⋅N>0.
-    Let i=m∠(N×☊)OI so that i∈[0,π). Call i the inclination.
+    (Ω,i) Define the inclination i as follows.
+    Let Ω=m∠♈︎☉☊ . Call Ω the longitude of the ascending node.
+    Let I∈R³, such that I⟂☊ and I⋅N>0.
+    Let i=m∠(N×☊)☉I so that i∈[0,π).
 
-    Define the orbital plane as the plane containing
-    points ☉, ☊₀, and I₀.
+    Define the orbital plane as the plane containing points ☉, ☊, and I.
 
-    Define the orbit as the ellipse in the orbital plane having
+    (e,a,ω) Define an orbit as the ellipse in the orbital plane having
     a focus at ☉, eccentricity e, measure a of semimajor axis,
     and angle ω from ☊ to periapsis.
 
-    Periapsis is the vector from ☉ to the nearest point on the orbit.
+    Define the eccentricity of the orbit as e = sqrt(1 - (b/a)²),
+    where b is measure of semiminor axis.
 
-    e = sqrt(1 - (b/a)²), where b is measure of semiminor axis.
+    Define the periapsis as the vector from ☉ to the nearest point on the orbit.
 
-    Specify the location of the body in the orbit by the true anomaly ν.
+    (ν) Specify the location of the body in the orbit by the true anomaly ν.
     The true anomaly is the angle at ☉ between periapsis and the body.
 
-    Alternatively, specify the location of the body in the orbit by the
-    eccentric anomaly E, or by the mean anomaly M, which quantities are
-    related to ν as follows:
+    (E) Alternatively, specify the location of the body in the orbit by the
+    eccentric anomaly E, which is related to ν as follows:
 
     tan E = sqrt(1-e²) sin ν / (e + cos ν).
+
+    (M) Alternatively, specify the location of the body in the orbit by the
+    mean anomaly M, which is related to E as follows:
 
     M = E - e sin E.
     '''
@@ -549,7 +566,7 @@ class OrbitalElements:
     e: float
     M: Degrees
 
-# -------------------- the_Moon
+# 8 -------------------- the_Moon
 
 def moon_elements(d) -> OrbitalElements:
     return OrbitalElements(
